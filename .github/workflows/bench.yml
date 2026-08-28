@@ -18,7 +18,7 @@ jobs:
 
       - uses: actions/setup-go@v6
         with:
-          go-version: '1.23'
+          go-version: '1.26' # benchstat@latest 要求 go >= 1.26;bench 用最新版测
           cache: false
 
       - name: Install benchstat
