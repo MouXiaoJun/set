@@ -67,11 +67,14 @@ func (s *SafeSet[T]) Clear() {
 
 // Clone 返回快照拷贝。
 func (s *SafeSet[T]) Clone() *SafeSet[T] {
+	return &SafeSet[T]{s: *s.snapshot()}
+}
+
+// snapshot 返回底层集合的拷贝（RLock 一次，全程持锁复制，无多锁持有）。
+func (s *SafeSet[T]) snapshot() *HashSet[T] {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	clone := &SafeSet[T]{}
-	clone.s.Add(s.s.Elements()...)
-	return clone
+	return s.s.Clone()
 }
 
 // Elements 返回某一时刻的元素快照（顺序不保证稳定）。
@@ -109,92 +112,51 @@ func (s *SafeSet[T]) String() string {
 	return s.s.String()
 }
 
-// Union 返回并集。
+// Union 返回并集。各自快照一次后在底层 HashSet 上做 map 运算，
+// 避免对每个元素加锁（两个集合各一次 RLock，无多锁持有，无死锁风险）。
 func (s *SafeSet[T]) Union(other *SafeSet[T]) *SafeSet[T] {
-	out := NewSafeSet[T]()
-	for e := range s.All() {
-		out.Add(e)
-	}
-	for e := range other.All() {
-		out.Add(e)
-	}
-	return out
+	ss, os := s.snapshot(), other.snapshot()
+	return &SafeSet[T]{s: *ss.Union(os)}
 }
 
 // Intersection 返回交集。
 func (s *SafeSet[T]) Intersection(other *SafeSet[T]) *SafeSet[T] {
-	out := NewSafeSet[T]()
-	for e := range s.All() {
-		if other.Contains(e) {
-			out.Add(e)
-		}
-	}
-	return out
+	ss, os := s.snapshot(), other.snapshot()
+	return &SafeSet[T]{s: *ss.Intersection(os)}
 }
 
 // Difference 返回差集：属于 s 但不属于 other。
 func (s *SafeSet[T]) Difference(other *SafeSet[T]) *SafeSet[T] {
-	out := NewSafeSet[T]()
-	for e := range s.All() {
-		if !other.Contains(e) {
-			out.Add(e)
-		}
-	}
-	return out
+	ss, os := s.snapshot(), other.snapshot()
+	return &SafeSet[T]{s: *ss.Difference(os)}
 }
 
 // SymmetricDifference 返回对称差集。
 func (s *SafeSet[T]) SymmetricDifference(other *SafeSet[T]) *SafeSet[T] {
-	out := NewSafeSet[T]()
-	for e := range s.All() {
-		if !other.Contains(e) {
-			out.Add(e)
-		}
-	}
-	for e := range other.All() {
-		if !s.Contains(e) {
-			out.Add(e)
-		}
-	}
-	return out
+	ss, os := s.snapshot(), other.snapshot()
+	return &SafeSet[T]{s: *ss.SymmetricDifference(os)}
 }
 
 // IsSubset 判断 s ⊆ other。
 func (s *SafeSet[T]) IsSubset(other *SafeSet[T]) bool {
-	if s.Len() > other.Len() {
-		return false
-	}
-	for e := range s.All() {
-		if !other.Contains(e) {
-			return false
-		}
-	}
-	return true
+	ss, os := s.snapshot(), other.snapshot()
+	return ss.IsSubset(os)
 }
 
 // IsSuperset 判断 s ⊇ other。
 func (s *SafeSet[T]) IsSuperset(other *SafeSet[T]) bool {
-	return other.IsSubset(s)
+	ss, os := s.snapshot(), other.snapshot()
+	return ss.IsSuperset(os)
 }
 
 // Equal 判断两个集合元素是否完全相同。
 func (s *SafeSet[T]) Equal(other *SafeSet[T]) bool {
-	if s.Len() != other.Len() {
-		return false
-	}
-	return s.IsSubset(other)
+	ss, os := s.snapshot(), other.snapshot()
+	return ss.Equal(os)
 }
 
 // IsDisjoint 判断两个集合是否不相交。
 func (s *SafeSet[T]) IsDisjoint(other *SafeSet[T]) bool {
-	a, b := s, other
-	if a.Len() > b.Len() {
-		a, b = b, a
-	}
-	for e := range a.All() {
-		if b.Contains(e) {
-			return false
-		}
-	}
-	return true
+	ss, os := s.snapshot(), other.snapshot()
+	return ss.IsDisjoint(os)
 }

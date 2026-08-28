@@ -11,7 +11,9 @@ import (
 //
 // 底层是"始终有序的切片 + 二分查找"：
 //   - Contains / Lower / Floor / Ceiling / Higher 都是 O(log n) 二分；
-//   - Add / Remove 需要移动切片元素，O(n)；
+//   - 单元素 Add / Remove 需要移动切片元素，O(n)；
+//   - 批量 Add 走"过滤 + 排序 + 归并"，批量 Remove 走"删除集 + 一次扫描重建"，
+//     避免逐个插入/删除的 O(n²)；
 //   - 集合运算（Union / Intersection / …）用归并算法，O(n+m) 且结果天然有序。
 //
 // T 不要求 comparable：相等性由比较器决定（cmp(a,b) == 0 视为同一元素），
@@ -24,8 +26,7 @@ type SortedSet[T any] struct {
 	srt []T // 始终保持升序
 }
 
-// NewSortedSet 创建按 cmpFn 排序的集合。大量元素建议一次性传入构造（内部批量排序去重），
-// 逐个 Add 是 O(n²)（每次插入 O(n)）。
+// NewSortedSet 创建按 cmpFn 排序的集合。elems 一次性传入（内部批量排序去重）。
 func NewSortedSet[T any](cmpFn func(a, b T) int, elems ...T) *SortedSet[T] {
 	s := &SortedSet[T]{cmp: cmpFn}
 	if len(elems) == 0 {
@@ -42,38 +43,102 @@ func NewOrderedSet[T cmp.Ordered](elems ...T) *SortedSet[T] {
 	return NewSortedSet(cmp.Compare[T], elems...)
 }
 
-// search 返回第一个 >= elem 的下标（二分）。前置条件：srt 已有序。
-func (s *SortedSet[T]) search(elem T) int {
-	return sort.Search(len(s.srt), func(i int) bool { return s.cmp(s.srt[i], elem) >= 0 })
+// searchGE 返回第一个 >= elem 的下标（二分）。前置条件：srt 已有序。
+func (s *SortedSet[T]) searchGE(elem T) int {
+	i, _ := slices.BinarySearchFunc(s.srt, elem, s.cmp)
+	return i
 }
 
-// Add 添加元素（幂等）。已存在的元素（cmp == 0）跳过。
+// searchGT 返回第一个 > elem 的下标（二分）。集合无重复元素，最多后移一次。
+func (s *SortedSet[T]) searchGT(elem T) int {
+	i := s.searchGE(elem)
+	for i < len(s.srt) && s.cmp(s.srt[i], elem) == 0 {
+		i++
+	}
+	return i
+}
+
+// insertOne 单元素有序插入（O(n) 移动）。
+func (s *SortedSet[T]) insertOne(elem T) {
+	i := s.searchGE(elem)
+	if i < len(s.srt) && s.cmp(s.srt[i], elem) == 0 {
+		return // 已存在
+	}
+	s.srt = append(s.srt, elem)
+	copy(s.srt[i+1:], s.srt[i:])
+	s.srt[i] = elem
+}
+
+// Add 添加元素（幂等）。
+// 单元素走 O(n) 插入快路径；批量走"过滤已存在 + 排序去重 + 归并"，
+// 复杂度 O(m log n + m log m + n + m)，避免逐个插入的 O(n·m)。
 func (s *SortedSet[T]) Add(elems ...T) {
-	for _, e := range elems {
-		i := s.search(e)
-		if i < len(s.srt) && s.cmp(s.srt[i], e) == 0 {
-			continue
+	if len(elems) <= 1 {
+		for _, e := range elems {
+			s.insertOne(e)
 		}
-		s.srt = append(s.srt, e)
-		copy(s.srt[i+1:], s.srt[i:])
-		s.srt[i] = e
+		return
+	}
+	// 批量路径：过滤掉已存在的元素，剩下的排序去重后与现有有序切片归并。
+	add := make([]T, 0, len(elems))
+	for _, e := range elems {
+		if !s.Contains(e) {
+			add = append(add, e)
+		}
+	}
+	if len(add) == 0 {
+		return
+	}
+	sort.Slice(add, func(i, j int) bool { return s.cmp(add[i], add[j]) < 0 })
+	add = slices.CompactFunc(add, func(a, b T) bool { return s.cmp(a, b) == 0 })
+
+	merged := make([]T, 0, len(s.srt)+len(add))
+	i, j := 0, 0
+	for i < len(s.srt) && j < len(add) {
+		if s.cmp(s.srt[i], add[j]) < 0 {
+			merged = append(merged, s.srt[i])
+			i++
+		} else {
+			merged = append(merged, add[j])
+			j++
+		}
+	}
+	merged = append(merged, s.srt[i:]...)
+	merged = append(merged, add[j:]...)
+	s.srt = merged
+}
+
+// removeOne 单元素删除（O(n) 移动）。
+func (s *SortedSet[T]) removeOne(elem T) {
+	i := s.searchGE(elem)
+	if i < len(s.srt) && s.cmp(s.srt[i], elem) == 0 {
+		s.srt = append(s.srt[:i], s.srt[i+1:]...)
 	}
 }
 
 // Remove 删除元素；不存在的元素是 no-op。
+// 单元素走 O(n) 快路径；批量构建去重删除集后一次扫描重建，O((n+m) log m)。
 func (s *SortedSet[T]) Remove(elems ...T) {
-	for _, e := range elems {
-		i := s.search(e)
-		if i < len(s.srt) && s.cmp(s.srt[i], e) == 0 {
-			s.srt = append(s.srt[:i], s.srt[i+1:]...)
+	if len(elems) <= 1 {
+		for _, e := range elems {
+			s.removeOne(e)
+		}
+		return
+	}
+	drop := NewSortedSet(s.cmp, elems...) // 去重 + 排序
+	out := s.srt[:0]                      // 复用底层数组
+	for _, e := range s.srt {
+		if !drop.Contains(e) {
+			out = append(out, e)
 		}
 	}
+	s.srt = out
 }
 
 // Contains 判断是否包含 elem（O(log n) 二分）。
 func (s *SortedSet[T]) Contains(elem T) bool {
-	i := s.search(elem)
-	return i < len(s.srt) && s.cmp(s.srt[i], elem) == 0
+	_, found := slices.BinarySearchFunc(s.srt, elem, s.cmp)
+	return found
 }
 
 // Len 返回元素个数。
@@ -133,7 +198,7 @@ func (s *SortedSet[T]) Max() (T, bool) {
 // Lower 返回严格小于 elem 的最大元素（TreeSet 语义）。无则零值与 false。
 func (s *SortedSet[T]) Lower(elem T) (T, bool) {
 	var zero T
-	i := sort.Search(len(s.srt), func(i int) bool { return s.cmp(s.srt[i], elem) >= 0 })
+	i := s.searchGE(elem)
 	if i == 0 {
 		return zero, false
 	}
@@ -143,7 +208,7 @@ func (s *SortedSet[T]) Lower(elem T) (T, bool) {
 // Floor 返回小于等于 elem 的最大元素。无则零值与 false。
 func (s *SortedSet[T]) Floor(elem T) (T, bool) {
 	var zero T
-	i := sort.Search(len(s.srt), func(i int) bool { return s.cmp(s.srt[i], elem) > 0 })
+	i := s.searchGT(elem)
 	if i == 0 {
 		return zero, false
 	}
@@ -153,7 +218,7 @@ func (s *SortedSet[T]) Floor(elem T) (T, bool) {
 // Ceiling 返回大于等于 elem 的最小元素。无则零值与 false。
 func (s *SortedSet[T]) Ceiling(elem T) (T, bool) {
 	var zero T
-	i := sort.Search(len(s.srt), func(i int) bool { return s.cmp(s.srt[i], elem) >= 0 })
+	i := s.searchGE(elem)
 	if i == len(s.srt) {
 		return zero, false
 	}
@@ -163,7 +228,7 @@ func (s *SortedSet[T]) Ceiling(elem T) (T, bool) {
 // Higher 返回严格大于 elem 的最小元素。无则零值与 false。
 func (s *SortedSet[T]) Higher(elem T) (T, bool) {
 	var zero T
-	i := sort.Search(len(s.srt), func(i int) bool { return s.cmp(s.srt[i], elem) > 0 })
+	i := s.searchGT(elem)
 	if i == len(s.srt) {
 		return zero, false
 	}

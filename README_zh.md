@@ -157,12 +157,17 @@ Apple M5，`go test -bench . -benchmem`：
 
 | 基准 | 耗时 | 分配 |
 | --- | --- | --- |
-| Contains（1000 元素） | 4.3 ns/op | 0 |
+| HashSet Contains（1000 元素） | 3.8 ns/op | 0 |
 | 迭代 1000 元素 | 5.3 µs/op | 0 |
-| Add 1000 元素 | 35 µs/op | 20 次 |
-| SortedSet Elements（1000 元素） | 770 ns/op | 1 次 |
+| HashSet Add 1000 元素 | 28 µs/op | 20 次 |
+| SortedSet Contains（1000 元素） | 19 ns/op | 0 |
+| SortedSet Contains（10000 元素） | 37 ns/op | 0 |
+| SortedSet Elements（1000 元素） | 800 ns/op | 1 次 |
+| SortedSet 批量 Add 1000 元素 | 8 µs/op | 6 次 |
 
-`HashSet.Contains` 零分配零耗时；`SafeSet` 读路径仅一次 RLock；`SortedSet` 的集合运算是归并，比逐个 `Contains` 快一个量级。
+**HashSet 就是裸 map**：`Contains` 与原生 `map[T]struct{}` 对照同为 ~3.9 ns、0 分配——包装开销为零。**SortedSet.Contains 是 O(log n)**：数据量 10 倍，耗时只涨 1.9 倍。
+
+**批量操作有专门优化**：`SortedSet` 的批量 `Add`（一次传入多个）走"过滤 + 排序 + 归并"而非逐个二分插入，比逐个 `Add` 快约 50%（且避免 O(n²) 最坏情况）；批量 `Remove` 构建删除集后一次扫描重建。
 
 ## 安装
 

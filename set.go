@@ -29,7 +29,9 @@ type HashSet[T comparable] struct {
 // New 创建包含 elems 的集合。
 func New[T comparable](elems ...T) *HashSet[T] {
 	s := &HashSet[T]{m: make(map[T]struct{}, len(elems))}
-	s.Add(elems...)
+	for _, e := range elems {
+		s.m[e] = struct{}{}
+	}
 	return s
 }
 

@@ -153,6 +153,43 @@ func TestSortedSetOps(t *testing.T) {
 	}
 }
 
+func TestSortedSetBatchAdd(t *testing.T) {
+	// 批量添加 + 重复元素：走"过滤 + 排序 + 归并"批量路径
+	s := NewOrderedSet[int]()
+	s.Add(5, 1, 3, 1, 2, 5, 3, 4)
+	if got := s.Elements(); !slices.Equal(got, []int{1, 2, 3, 4, 5}) {
+		t.Fatalf("batch add wrong: %v", got)
+	}
+	// 全部已存在：不应产生变化
+	s.Add(1, 2, 3, 4, 5)
+	if s.Len() != 5 {
+		t.Fatalf("batch add of existing changed size: %d", s.Len())
+	}
+	// 部分新 + 部分旧
+	s.Add(4, 5, 6, 7)
+	if got := s.Elements(); !slices.Equal(got, []int{1, 2, 3, 4, 5, 6, 7}) {
+		t.Fatalf("mixed batch add wrong: %v", got)
+	}
+	// 空批量 no-op
+	s.Add()
+	if s.Len() != 7 {
+		t.Fatalf("empty add changed size: %d", s.Len())
+	}
+}
+
+func TestSortedSetBatchRemove(t *testing.T) {
+	s := NewOrderedSet(1, 2, 3, 4, 5, 6, 7, 8)
+	s.Remove(2, 4, 6, 99) // 批量删除 + 不存在的元素
+	if got := s.Elements(); !slices.Equal(got, []int{1, 3, 5, 7, 8}) {
+		t.Fatalf("batch remove wrong: %v", got)
+	}
+	// 全删
+	s.Remove(1, 3, 5, 7, 8)
+	if !s.IsEmpty() {
+		t.Fatalf("remove all failed: %v", s.Elements())
+	}
+}
+
 func TestSortedSetCustomType(t *testing.T) {
 	// 自定义类型：按 ID 排序
 	type user struct {
