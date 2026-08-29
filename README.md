@@ -47,6 +47,24 @@ a.IsDisjoint(b)          // false
 
 In-place variants: `AddAll`, `RemoveAll`, `RetainAll`.
 
+## Deque & Heap
+
+```go
+d := set.NewDeque(1, 2, 3)
+d.PushFront(0)
+d.PopBack() // 3
+d.At(-1)    // 2
+
+h := set.NewMinHeap(5, 1, 3)
+h.Push(0)
+v, _ := h.Pop() // 0 — always the minimum
+
+max := set.NewMaxHeap(1, 2, 3) // max-heap
+byLen := set.NewHeap(func(a, b string) int { return len(a) - len(b) }, "ccc", "a") // custom
+```
+
+`Deque` is a ring buffer — O(1) push/pop at both ends, negative indexing (`At(-1)`). `Heap` is a generic binary heap — O(log n) push/pop, O(n) batch heapify, min/max/custom comparators.
+
 ## SortedSet
 
 ```go

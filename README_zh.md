@@ -15,6 +15,8 @@
 - ✅ **`SafeSet[T comparable]`**：线程安全集合，RWMutex + 快照迭代，`go test -race` 验证
 - ✅ **`ImmutableSet[T comparable]`**：不可变集合，copy-on-write 结构共享，天然并发安全
 - ✅ **集合运算**：`Union` / `Intersection` / `Difference` / `SymmetricDifference` / `IsSubset` / `IsSuperset` / `Equal` / `IsDisjoint`
+- ✅ **Deque 双端队列**：环形缓冲，两端 O(1)，支持负索引 `At(-1)`
+- ✅ **Heap 优先队列**：泛型二叉堆，`NewMinHeap` / `NewMaxHeap` / 自定义比较器，批量堆化 O(n)
 - ✅ **Go 1.23+ 迭代器**：所有类型实现 `All() iter.Seq[T]`，直接 `for v := range s.All()`
 - ✅ **零依赖**：仅使用 Go 标准库（`iter` / `cmp` / `slices` / `sort`）
 
@@ -26,6 +28,8 @@
 | `SortedSet` | 有序切片 | O(log n) | O(n) | ✓ | ✗ | 需要有序遍历、Top-K、区间查询 |
 | `SafeSet` | map + RWMutex | O(1) | O(1) | ✗ | ✓ | 多 goroutine 共享读写 |
 | `ImmutableSet` | map（结构共享） | O(1) | O(n) 复制 | ✗ | ✓（天然） | 配置快照、函数式链式、跨 goroutine 只读共享 |
+| `Deque` | 环形缓冲 | 两端 O(1) | 两端 O(1) | ✗ | ✗ | 队列/栈/滑动窗口（LRU 等） |
+| `Heap` | 二叉堆 | O(1) 堆顶 | O(log n) | ✗ | ✗ | 优先队列、Top-K、调度 |
 
 ## 快速开始
 
@@ -82,6 +86,38 @@ s := set.CollectSeq(slices.Values([]int{1, 2, 2, 3}))
 
 // 配合标准库转换
 elems := slices.Collect(s.All()) // []int
+```
+
+## 双端队列 Deque
+
+环形缓冲实现，两端 Push/Pop 都是 O(1) 摊还：
+
+```go
+d := set.NewDeque(1, 2, 3)
+d.PushFront(0)       // [0 1 2 3]
+d.PushBack(4)        // [0 1 2 3 4]
+d.PopFront()         // 0
+d.PopBack()          // 4
+d.At(-1)             // 3（负索引：-1 = 尾部）
+for v := range d.All() { ... } // 从头到尾
+```
+
+## 优先队列 Heap
+
+泛型二叉堆，比较器决定优先级（默认小顶堆）：
+
+```go
+h := set.NewMinHeap(5, 1, 3, 2, 4)
+h.Push(0)
+v, _ := h.Pop() // 0（始终最小）
+
+max := set.NewMaxHeap(1, 2, 3) // 大顶堆
+v, _ = max.Pop()               // 3
+
+// 自定义比较器（如按长度优先）
+byLen := set.NewHeap(func(a, b string) int { return len(a) - len(b) }, "ccc", "a", "bb")
+
+// 批量构造自动堆化 O(n)；Push/Pop 都是 O(log n)
 ```
 
 ## 有序集合 SortedSet

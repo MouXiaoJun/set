@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-02-XX
+
+### Added
+- Deque：环形缓冲双端队列，两端 O(1)，支持负索引 At(-1)，iter 迭代
+- Heap：泛型二叉堆（NewMinHeap / NewMaxHeap / 自定义比较器），批量堆化 O(n)
+
 ## [Unreleased]
 
 ## [1.1.0] - 2026-02-XX
