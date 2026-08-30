@@ -4,7 +4,7 @@
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/MouXiaoJun/set.svg)](https://pkg.go.dev/github.com/MouXiaoJun/set)
 [![Go Version](https://img.shields.io/badge/go-1.23+-00ADD8?style=flat-square&logo=go)](https://golang.org)
-[![License](https://img.shields.io/badge/license-MulanPSL--2.0-green.svg?style=flat-square)](LICENSE)
+[![License](https://img.shields.io/badge/license-MIT-green.svg?style=flat-square)](LICENSE)
 
 一个**零依赖、基于最新 Go 泛型**的集合库：四种集合（`HashSet` / `SortedSet` / `SafeSet` / `ImmutableSet`）+ 两种数据结构（`Deque` / `Heap`），一套统一 API，全部支持 Go 1.23+ 的 `iter.Seq` 迭代。
 
@@ -22,7 +22,7 @@
 - ✅ **`ImmutableSet[T comparable]`**：不可变集合，copy-on-write **结构共享**——无变化时返回原实例，天然并发安全
 - ✅ **`Deque[T any]`**：泛型双端队列，环形缓冲，两端 Push/Pop O(1) 摊还，支持负索引 `At(-1)`，**零值可用**
 - ✅ **`Heap[T any]`**：泛型二叉堆（优先队列），`NewMinHeap` / `NewMaxHeap` / 自定义比较器，批量构造堆化 O(n)，Push/Pop O(log n)
-- ✅ **集合运算**：`Union` / `Intersection` / `Difference` / `SymmetricDifference` / `IsSubset` / `IsSuperset` / `Equal` / `IsDisjoint`，四种集合统一提供
+- ✅ **集合运算**：`Union` / `Intersection` / `Difference` / `SymmetricDifference` / `IsSubset` / `IsSuperset` / `Equal`，四种集合统一提供；`IsDisjoint` 由 HashSet、SafeSet、ImmutableSet 提供
 - ✅ **就地运算**：`AddAll` / `RemoveAll` / `RetainAll`（`HashSet`），不新建集合直接改
 - ✅ **Go 1.23+ 迭代器**：所有类型实现 `All() iter.Seq[T]`；`CollectSeq` 从任意 `iter.Seq` 收集
 - ✅ **零依赖**：仅使用 Go 标准库（`iter` / `cmp` / `slices` / `sort` / `sync`）
@@ -189,7 +189,7 @@ fromRange := set.CollectSeq(slices.Values([]int{1, 2, 3, 4, 5}))
 | `Remove(elems ...T)` | 删除；单个 O(n)，批量构建删除集后一次扫描重建 | O(n) / O((n+m) log m) |
 | `Contains(elem T) bool` | 二分查找 | O(log n) |
 | `Len() int` / `IsEmpty() bool` | 元素个数 / 是否为空 | O(1) |
-| `Clear()` | 清空（保留容量） | O(1) |
+| `Clear()` | 清空并释放元素引用（保留容量） | O(n) |
 | `Clone() *SortedSet[T]` | 浅拷贝（共享比较器） | O(n) |
 | `Elements() []T` | 升序切片副本 | O(n) |
 | `All() iter.Seq[T]` | 升序迭代器 | O(n) |
@@ -268,6 +268,8 @@ a.Equal(set.NewOrderedSet(3, 2, 1))       // true
 ```
 
 两个有序切片双指针归并：O(n+m)，结果保持升序，且不修改任何输入。
+
+前提：两个集合的比较器必须定义相同的排序与相等性。`Remove` 会清除底层数组中不再使用的槽位，避免保留已删除元素的引用。
 
 ### 批量操作：一次传多个，而不是逐个调
 
@@ -585,7 +587,7 @@ go test -bench . -benchmem -benchtime=1s
 
 **1. 和 golang-set 比怎么样？**
 
-[golang-set](https://github.com/deckarep/golang-set)（`github.com/deckarep/golang-set/v2`，包名 `mapset`）是同类库中最成熟的一个，Docker、1Password 等项目都在用，API 经过实战检验。区别在于：它是**传统 API**——没有 `iter.Seq` / range-over-func 集成，迭代要靠 `Iter()` 通道或 `ToSlice()` 转切片；且只提供 `HashSet` 这一类集合。本库面向 Go 1.23+ 重做：所有类型直接 `for v := range s.All()`，并把 `SortedSet`（含区间查询）、`Deque`、`Heap` 一并打包，一套 API 覆盖六种容器。两者核心概念相同（`Add`/`Remove`/`Contains`/集合运算），从 golang-set 迁移很直接。老项目图稳定选 golang-set，用现代 Go 选本库。
+[golang-set](https://github.com/deckarep/golang-set)（`github.com/deckarep/golang-set/v2`，包名 `mapset`）自 v2.8.0 起也支持 Go 1.23 迭代器。本库另外提供切片型 `SortedSet`（含区间查询）、`Deque` 和 `Heap`。应按所需容器和语义选择，不能把迭代器支持当作独有差异。
 
 **2. 为什么 SortedSet 不用跳表 / 红黑树？**
 
@@ -601,7 +603,7 @@ go test -bench . -benchmem -benchtime=1s
 
 **5. SafeSet 的快照会"丢数据"吗？**
 
-不会。快照只是"读取那一刻的视图"：`All()` 拿到迭代器之后的 `Add`/`Remove` 不会被看到，但集合本身的数据一条不少。需要最新视图就再调一次 `All()` / `Elements()`。集合运算同理基于快照——结果确定、无死锁风险，代价是"运算期间的新写入不进结果"。
+不会。快照只是"读取那一刻的视图"：`All()` 拿到迭代器之后的 `Add`/`Remove` 不会被看到，但集合本身的数据一条不少。需要最新视图就再调一次 `All()` / `Elements()`。二元集合运算分别获取两个快照，不保证跨集合原子性。`String()` 也在释放锁后格式化快照，元素 Stringer 可以修改集合。快照是浅拷贝，指针指向的可变对象仍需调用方自行同步。
 
 ## 更新日志
 
@@ -609,4 +611,4 @@ go test -bench . -benchmem -benchtime=1s
 
 ## License
 
-MulanPSL-2.0（木兰宽松许可证第 2 版），见 [LICENSE](./LICENSE)。
+MIT，见 [LICENSE](./LICENSE)。

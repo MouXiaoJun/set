@@ -19,6 +19,7 @@ import (
 // T 不要求 comparable：相等性由比较器决定（cmp(a,b) == 0 视为同一元素），
 // 因此支持任何类型，包括含 slice / map 字段、无法做 map key 的结构体。
 // 比较器语义与标准库 cmp.Compare 一致：cmp(a,b) < 0 表示 a 在 b 前。
+// 二元集合运算要求两个集合的比较器定义相同的排序与相等性。
 //
 // 零值不可用（缺少比较器），必须通过 NewSortedSet / NewOrderedSet 构造。
 type SortedSet[T any] struct {
@@ -112,7 +113,7 @@ func (s *SortedSet[T]) Add(elems ...T) {
 func (s *SortedSet[T]) removeOne(elem T) {
 	i := s.searchGE(elem)
 	if i < len(s.srt) && s.cmp(s.srt[i], elem) == 0 {
-		s.srt = append(s.srt[:i], s.srt[i+1:]...)
+		s.srt = slices.Delete(s.srt, i, i+1)
 	}
 }
 
@@ -132,6 +133,7 @@ func (s *SortedSet[T]) Remove(elems ...T) {
 			out = append(out, e)
 		}
 	}
+	clear(s.srt[len(out):])
 	s.srt = out
 }
 
@@ -151,8 +153,9 @@ func (s *SortedSet[T]) IsEmpty() bool {
 	return len(s.srt) == 0
 }
 
-// Clear 清空集合。
+// Clear 清空集合并释放元素引用，保留容量，O(n)。
 func (s *SortedSet[T]) Clear() {
+	clear(s.srt)
 	s.srt = s.srt[:0]
 }
 

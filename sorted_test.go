@@ -190,6 +190,37 @@ func TestSortedSetBatchRemove(t *testing.T) {
 	}
 }
 
+func TestSortedSetReleasesRemovedReferences(t *testing.T) {
+	a, b, c := 1, 2, 3
+	for _, tc := range []struct {
+		name string
+		drop func(*SortedSet[*int])
+		want []*int
+	}{
+		{"single", func(s *SortedSet[*int]) { s.Remove(&c) }, []*int{&a, &b}},
+		{"batch", func(s *SortedSet[*int]) { s.Remove(&b, &c) }, []*int{&a}},
+		{"clear", func(s *SortedSet[*int]) { s.Clear() }, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := NewSortedSet(func(a, b *int) int { return *a - *b }, &a, &b, &c)
+			capacity := cap(s.srt)
+			tc.drop(s)
+			if !slices.Equal(s.Elements(), tc.want) {
+				t.Fatal("remaining elements changed")
+			}
+			if cap(s.srt) != capacity {
+				t.Fatal("removal should retain capacity")
+			}
+			// Inspect unused slots directly instead of depending on GC timing.
+			for _, ref := range s.srt[len(s.srt):cap(s.srt)] {
+				if ref != nil {
+					t.Fatal("removed reference retained in backing array")
+				}
+			}
+		})
+	}
+}
+
 func TestSortedSetCustomType(t *testing.T) {
 	// 自定义类型：按 ID 排序
 	type user struct {

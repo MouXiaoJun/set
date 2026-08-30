@@ -4,7 +4,7 @@
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/MouXiaoJun/set.svg)](https://pkg.go.dev/github.com/MouXiaoJun/set)
 [![Go Version](https://img.shields.io/badge/go-1.23+-00ADD8?style=flat-square&logo=go)](https://golang.org)
-[![License](https://img.shields.io/badge/license-MulanPSL--2.0-green.svg?style=flat-square)](LICENSE)
+[![License](https://img.shields.io/badge/license-MIT-green.svg?style=flat-square)](LICENSE)
 
 A **zero-dependency** collection library built on modern Go generics: four set types (`HashSet`, `SortedSet`, `SafeSet`, `ImmutableSet`) plus `Deque` and `Heap`, behind one consistent API. Every type implements `All() iter.Seq[T]` for `range-over-func` iteration (Go 1.23+).
 
@@ -16,7 +16,7 @@ A **zero-dependency** collection library built on modern Go generics: four set t
 - ✅ **`ImmutableSet[T comparable]`** — copy-on-write with structural sharing; returns the same instance when nothing changes; inherently concurrency-safe
 - ✅ **`Deque[T any]`** — ring-buffer double-ended queue, O(1) amortized push/pop at both ends, negative indexing (`At(-1)`), zero-value usable
 - ✅ **`Heap[T any]`** — generic binary heap: `NewMinHeap` / `NewMaxHeap` / custom comparator, O(n) batch heapify, O(log n) push/pop
-- ✅ **Set operations** — `Union` / `Intersection` / `Difference` / `SymmetricDifference` / `IsSubset` / `IsSuperset` / `Equal` / `IsDisjoint` on all four set types
+- ✅ **Set operations** — `Union` / `Intersection` / `Difference` / `SymmetricDifference` / `IsSubset` / `IsSuperset` / `Equal` on all four set types; `IsDisjoint` on HashSet, SafeSet and ImmutableSet
 - ✅ **In-place variants** — `AddAll` / `RemoveAll` / `RetainAll` on `HashSet`
 - ✅ **Go 1.23+ iterators** — `All() iter.Seq[T]` everywhere, plus package-level `CollectSeq` for any `iter.Seq`
 - ✅ **Zero dependencies** — standard library only (`iter` / `cmp` / `slices` / `sort` / `sync`)
@@ -111,6 +111,8 @@ Package-level helpers: `New(elems...)` and `CollectSeq(seq)` for collecting any 
 
 Elements stay sorted by your comparator (ascending). `T` does **not** need `comparable` — equality comes from the comparator (`cmp(a, b) == 0`), so structs with slice/map fields work.
 
+Binary set operations require both comparators to define the same ordering and equality. `Remove` clears unused slots; `Clear` releases element references in O(n) while retaining capacity.
+
 ```go
 s := set.NewOrderedSet(5, 1, 3, 2, 4)
 s.Elements() // [1 2 3 4 5]
@@ -154,6 +156,8 @@ for v := range iter { /* 1, 2, 3 — no 99 */ }
 ```
 
 `All()` / `Elements()` / `ForEach` copy under one lock and release it — the returned iterator can never race with concurrent writes, at the cost of not seeing writes made *after* you obtained it. Set operations snapshot both sets once and then run on plain maps: no per-element locking, no multi-lock deadlock.
+
+`String()` also formats a snapshot after releasing the lock, so element Stringers can modify the set. Snapshots are shallow: pointed-to values still need their own synchronization. Binary operations take the two snapshots separately, not atomically across both sets.
 
 ## ImmutableSet
 
@@ -262,7 +266,7 @@ go test -bench . -benchmem -benchtime=1s
 
 ## FAQ
 
-**How does this compare to golang-set?** [golang-set](https://github.com/deckarep/golang-set) (`github.com/deckarep/golang-set/v2`, package `mapset`) is the most battle-tested library of its kind — used by Docker, 1Password and others. The differences: it's a **traditional API** — no `iter.Seq` / range-over-func integration (you iterate via its `Iter()` channel or by converting to a slice with `ToSlice()`) — and it only provides a `HashSet`-style set. This library is built around Go 1.23+: every type supports `for v := range s.All()`, and it bundles `SortedSet` (with range queries), `Deque`, and `Heap` behind one API. The core concepts are the same (`Add`/`Remove`/`Contains`/set operations), so migrating from golang-set is straightforward. Pick golang-set for legacy stability, this library for modern Go.
+**How does this compare to golang-set?** [golang-set](https://github.com/deckarep/golang-set) (`github.com/deckarep/golang-set/v2`, package `mapset`) also supports Go 1.23 iterators, added in v2.8.0. This library additionally bundles a slice-based `SortedSet` with range queries, `Deque`, and `Heap`. Choose based on the containers and semantics you need; iterator support alone is not a difference.
 
 **Why isn't SortedSet a skip list / red-black tree?** A sorted slice gives the same O(log n) lookups with contiguous memory, cache-friendliness, and zero pointer overhead. The trade-off is O(n) single-element writes — hence the batch `Add`/`Remove` merge paths that eliminate O(n²). Prefer `SortedSet` for read-heavy, range-query workloads; use batch APIs (or a tree) for hot random writes.
 
@@ -278,4 +282,4 @@ See [CHANGELOG.md](./CHANGELOG.md).
 
 ## License
 
-MulanPSL-2.0, see [LICENSE](./LICENSE).
+MIT, see [LICENSE](./LICENSE).

@@ -107,9 +107,7 @@ func (s *SafeSet[T]) All() iter.Seq[T] {
 
 // String 实现 fmt.Stringer（在快照上排序输出，结果稳定）。
 func (s *SafeSet[T]) String() string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.s.String()
+	return s.snapshot().String()
 }
 
 // Union 返回并集。各自快照一次后在底层 HashSet 上做 map 运算，

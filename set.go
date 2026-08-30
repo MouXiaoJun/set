@@ -2,7 +2,7 @@
 //
 // 本包零依赖，仅使用 Go 标准库，并面向 Go 1.23+ 的 iter.Seq 设计：
 //   - HashSet[T comparable]     无序集合（默认，map 实现，零值可用）
-//   - SortedSet[T any]          有序集合（自定义比较器，惰性排序缓存）
+//   - SortedSet[T any]          有序集合（自定义比较器，始终有序的切片）
 //   - SafeSet[T comparable]     线程安全集合（RWMutex 包装 HashSet）
 //   - ImmutableSet[T comparable] 不可变集合（结构共享，每次运算返回新集合）
 //

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sync"
 	"testing"
+	"time"
 )
 
 // TestSafeSetConcurrent 用 -race 验证并发读写无竞态。
@@ -121,5 +122,29 @@ func TestSafeSetString(t *testing.T) {
 	got := fmt.Sprint(s)
 	if got != "{a, b}" {
 		t.Fatalf("String = %q", got)
+	}
+}
+
+type removingStringer struct {
+	set *SafeSet[*removingStringer]
+}
+
+func (e *removingStringer) String() string {
+	e.set.Remove(e)
+	return "removed"
+}
+
+func TestSafeSetStringAllowsReentrantMutation(t *testing.T) {
+	s := NewSafeSet[*removingStringer]()
+	s.Add(&removingStringer{set: s})
+	done := make(chan string, 1)
+	go func() { done <- fmt.Sprint(s) }()
+	select {
+	case got := <-done:
+		if got != "{removed}" || !s.IsEmpty() {
+			t.Fatalf("String = %q; mutation should affect the set, not the snapshot", got)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("String blocked a reentrant mutation")
 	}
 }
