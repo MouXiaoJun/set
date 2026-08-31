@@ -1,5 +1,7 @@
 # go-set
 
+Maintenance scope: preserve the published API; focus on bug fixes, security and Go compatibility, with no planned API expansion.
+
 [中文](README_zh.md)
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/MouXiaoJun/set.svg)](https://pkg.go.dev/github.com/MouXiaoJun/set)
@@ -272,7 +274,7 @@ go test -bench . -benchmem -benchtime=1s
 
 **When should I use ImmutableSet?** Config snapshots, functional chains, read-only sharing across goroutines, and anywhere you want a value that provably never changes. Copy-on-write makes no-op operations zero-copy and reads free. Don't use it for high-frequency writes — copy the whole map instead (see benchmarks); use `HashSet` for writes, `SafeSet` for concurrent writes.
 
-**How does it fit the MouXiaoJun family (validator / copier / mask / dict_trans)?** Same author, same style: `github.com/MouXiaoJun/validator` (struct validation), `copier` (deep copy), `mask` (data masking), `dict_trans` (dictionary translation). Common combos: dedupe candidate values with `set` before validation; keep a `set` of processed IDs to avoid duplicate work; use `SortedSet` for Top-K or timeline range queries; share config as an `ImmutableSet` snapshot across goroutines. All are zero-dependency and iterator/generics-first.
+**How does it fit the MouXiaoJun family (validator / copier / mask / dict_trans)?** Same author, same style: `github.com/MouXiaoJun/validator` (struct validation), `copier` (field copy / DTO conversion, not deep copy), `mask` (data masking), `dict_trans` (dictionary translation). Common combos: dedupe candidate values with `set` before validation; keep a `set` of processed IDs to avoid duplicate work; use `SortedSet` for Top-K or timeline range queries; share config as an `ImmutableSet` snapshot across goroutines. All are zero-dependency and iterator/generics-first.
 
 **Does a SafeSet snapshot lose data?** No. The snapshot is just a point-in-time view — writes made after you obtained an iterator aren't visible to it, but nothing is lost from the set itself. Re-fetch `All()` / `Elements()` for a fresh view. Set operations are snapshot-based too: deterministic results, no deadlock risk, at the cost of ignoring concurrent writes.
 

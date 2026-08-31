@@ -1,5 +1,7 @@
 # go-set
 
+维护边界：保持已发布 API，继续修复缺陷、安全问题和 Go 兼容性，不主动扩展 API。
+
 [English](README.md)
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/MouXiaoJun/set.svg)](https://pkg.go.dev/github.com/MouXiaoJun/set)
@@ -599,7 +601,7 @@ go test -bench . -benchmem -benchtime=1s
 
 **4. 如何与 validator / copier / mask / dict_trans 配合（MouXiaoJun 家族）？**
 
-同作者家族库：`github.com/MouXiaoJun/validator`（结构体校验）、`copier`（深拷贝）、`mask`（数据脱敏）、`dict_trans`（字典翻译）。常见组合：用 `set` 收集候选值去重后再喂给 validator 校验、用 `set` 存"已处理 ID"防止重复处理、用 `SortedSet` 做 Top-K 或时间线区间查询、用 `ImmutableSet` 做配置快照跨 goroutine 共享给 copier/mask 的产物。四个库风格一致：零依赖、泛型/迭代器优先、中文注释。
+同作者家族库：`github.com/MouXiaoJun/validator`（结构体校验）、`copier`（字段复制 / DTO 转换，非深拷贝）、`mask`（数据脱敏）、`dict_trans`（字典翻译）。常见组合：用 `set` 收集候选值去重后再喂给 validator 校验、用 `set` 存"已处理 ID"防止重复处理、用 `SortedSet` 做 Top-K 或时间线区间查询、用 `ImmutableSet` 做配置快照跨 goroutine 共享给 copier/mask 的产物。四个库风格一致：零依赖、泛型/迭代器优先、中文注释。
 
 **5. SafeSet 的快照会"丢数据"吗？**
 
